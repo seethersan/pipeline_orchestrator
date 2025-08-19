@@ -15,9 +15,7 @@ class Scheduler:
         self.db = db
 
     def _load_graph(self, pipeline_id: int) -> tuple[list[int], list[tuple[int, int]]]:
-        blocks = self.db.scalars(
-            select(models.Block.id).where(models.Block.pipeline_id == pipeline_id)
-        ).all()
+        blocks = self.db.scalars(select(models.Block.id).where(models.Block.pipeline_id == pipeline_id)).all()
         edges = self.db.execute(
             select(models.Edge.from_block_id, models.Edge.to_block_id).where(models.Edge.pipeline_id == pipeline_id)
         ).all()
@@ -38,8 +36,7 @@ class Scheduler:
         for bid in roots:
             block_run = self.db.execute(
                 select(models.BlockRun).where(
-                    and_(models.BlockRun.pipeline_run_id == pipeline_run_id,
-                         models.BlockRun.block_id == bid)
+                    and_(models.BlockRun.pipeline_run_id == pipeline_run_id, models.BlockRun.block_id == bid)
                 )
             ).scalar_one_or_none()
             if not block_run:
@@ -53,8 +50,7 @@ class Scheduler:
                 self.db.flush()
             existing = self.db.execute(
                 select(models.BlockQueue).where(
-                    and_(models.BlockQueue.pipeline_run_id == pipeline_run_id,
-                         models.BlockQueue.block_id == bid)
+                    and_(models.BlockQueue.pipeline_run_id == pipeline_run_id, models.BlockQueue.block_id == bid)
                 )
             ).scalar_one_or_none()
             if not existing:
@@ -76,16 +72,14 @@ class Scheduler:
 
         completed = set(self.db.scalars(
             select(models.BlockRun.block_id).where(
-                and_(models.BlockRun.pipeline_run_id == pipeline_run_id,
-                     models.BlockRun.status == models.RunStatus.SUCCEEDED)
+                and_(models.BlockRun.pipeline_run_id == pipeline_run_id, models.BlockRun.status == models.RunStatus.SUCCEEDED)
             )
         ).all())
         completed.add(finished_block_id)
 
         running = set(self.db.scalars(
             select(models.BlockRun.block_id).where(
-                and_(models.BlockRun.pipeline_run_id == pipeline_run_id,
-                     models.BlockRun.status == models.RunStatus.RUNNING)
+                and_(models.BlockRun.pipeline_run_id == pipeline_run_id, models.BlockRun.status == models.RunStatus.RUNNING)
             )
         ).all())
 
@@ -95,8 +89,7 @@ class Scheduler:
         for bid in candidates:
             block_run = self.db.execute(
                 select(models.BlockRun).where(
-                    and_(models.BlockRun.pipeline_run_id == pipeline_run_id,
-                         models.BlockRun.block_id == bid)
+                    and_(models.BlockRun.pipeline_run_id == pipeline_run_id, models.BlockRun.block_id == bid)
                 )
             ).scalar_one_or_none()
             if not block_run:
@@ -110,8 +103,7 @@ class Scheduler:
                 self.db.flush()
             existing_q = self.db.execute(
                 select(models.BlockQueue).where(
-                    and_(models.BlockQueue.pipeline_run_id == pipeline_run_id,
-                         models.BlockQueue.block_id == bid)
+                    and_(models.BlockQueue.pipeline_run_id == pipeline_run_id, models.BlockQueue.block_id == bid)
                 )
             ).scalar_one_or_none()
             if not existing_q:

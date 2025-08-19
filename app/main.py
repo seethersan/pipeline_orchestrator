@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI
 from app.core.config import settings
 from app.infra.db import Base, engine

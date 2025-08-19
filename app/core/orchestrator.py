@@ -20,9 +20,7 @@ class Orchestrator:
             started_at=datetime.utcnow(),
             correlation_id=correlation_id or f"run-{int(datetime.utcnow().timestamp())}"
         )
-        self.db.add(run)
-        self.db.commit()
-        self.db.refresh(run)
+        self.db.add(run); self.db.commit(); self.db.refresh(run)
         self.scheduler.schedule_initial(run.id)
         return run
 
@@ -32,7 +30,5 @@ class Orchestrator:
             raise ValueError(f"PipelineRun {run_id} not found")
         run.status = models.RunStatus.SUCCEEDED if success else models.RunStatus.FAILED
         run.finished_at = datetime.utcnow()
-        self.db.add(run)
-        self.db.commit()
-        self.db.refresh(run)
+        self.db.add(run); self.db.commit(); self.db.refresh(run)
         return run

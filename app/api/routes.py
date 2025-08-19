@@ -2,12 +2,10 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func
 
 from app.dependencies import get_db
 from app import models
 from app.core.orchestrator import Orchestrator
-from app.core.scheduler import Scheduler
 from app.api.schemas import RunOut, RunStartResponse
 
 router = APIRouter()

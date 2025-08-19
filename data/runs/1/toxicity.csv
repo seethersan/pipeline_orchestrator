@@ -1,0 +1,5 @@
+id,text,toxicity
+1,"I love this product, it's awesome!",NON_TOXIC
+2,"This is the worst experience, I hate it.",NON_TOXIC
+3,"It is okay, nothing special.",NON_TOXIC
+4,You are such an idiot!,TOXIC

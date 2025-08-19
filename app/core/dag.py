@@ -11,7 +11,7 @@ class CycleError(Exception):
 @dataclass(frozen=True)
 class Graph:
     nodes: Set[int]
-    edges: List[Tuple[int, int]]  # (u -> v)
+    edges: List[Tuple[int, int]]
     adj: Dict[int, Set[int]]
     indegree: Dict[int, int]
 
@@ -31,7 +31,6 @@ def build_graph(block_ids: List[int], edges: List[Tuple[int, int]]) -> Graph:
 
 def topological_sort(block_ids: List[int], edges: List[Tuple[int, int]]) -> List[int]:
     g = build_graph(block_ids, edges)
-    # Kahn's algorithm
     queue = [n for n, d in g.indegree.items() if d == 0]
     order: List[int] = []
     indeg = dict(g.indegree)
@@ -44,7 +43,6 @@ def topological_sort(block_ids: List[int], edges: List[Tuple[int, int]]) -> List
             if indeg[v] == 0:
                 queue.append(v)
     if len(order) != len(g.nodes):
-        # find a cycle by DFS
         visited: Set[int] = set()
         stack: Set[int] = set()
         path: List[int] = []
@@ -65,7 +63,6 @@ def topological_sort(block_ids: List[int], edges: List[Tuple[int, int]]) -> List
         for start in g.nodes:
             if start not in visited:
                 if dfs(start):
-                    # extract cycle
                     last = path[-1]
                     cycle = [last]
                     for x in reversed(path[:-1]):
@@ -84,7 +81,6 @@ def find_roots(block_ids: List[int], edges: List[Tuple[int, int]]) -> List[int]:
 def next_runnables(block_ids: List[int], edges: List[Tuple[int, int]], completed: Set[int], running: Set[int] | None = None) -> Set[int]:
     g = build_graph(block_ids, edges)
     running = running or set()
-    # runnable = those whose all predecessors are completed and not yet completed/running
     preds: Dict[int, Set[int]] = {n: set() for n in block_ids}
     for u in block_ids:
         for v in g.adj[u]:

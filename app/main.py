@@ -1,13 +1,15 @@
 from fastapi import FastAPI
 from app.core.config import settings
 from app.infra.db import Base, engine
+from app.api.routes import router as api_router
 
 app = FastAPI(title=settings.APP_NAME)
 
 @app.on_event("startup")
 def on_startup():
-    # Auto-create tables on first run (dev convenience)
     Base.metadata.create_all(bind=engine)
+
+app.include_router(api_router)
 
 @app.get("/health")
 def health():

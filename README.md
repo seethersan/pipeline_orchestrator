@@ -1,5 +1,4 @@
-# Pipeline Orchestrator — Step 1
-
+# Pipeline Orchestrator
 This is the initial scaffold for the backend exercise: Poetry project + FastAPI app + SQLAlchemy models.
 
 ## Quickstart
@@ -24,7 +23,7 @@ app/
   api/
   core/
   infra/
-  steps/           # (placeholder for later phases)
+  steps/
   main.py
   dependencies.py
   models.py
@@ -35,7 +34,8 @@ pyproject.toml
 .env.example
 ```
 
-## Next Steps
-- Add CRUD endpoints for pipelines/blocks/edges.
-- Implement DAG verification and scheduler (Step 2).
-- Add docker-compose and UI (later steps).
+## DAG + Scheduler
+
+- `app/core/dag.py`: build_graph, topological_sort (con detección de ciclos), find_roots, next_runnables.
+- `app/core/scheduler.py`: Scheduler para encolar raíces y siguientes pasos tras finalizar un bloque.
+- Tests incluidos: `tests/test_dag.py`, `tests/test_scheduler.py`.

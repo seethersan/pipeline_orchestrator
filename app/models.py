@@ -1,6 +1,6 @@
 
 from __future__ import annotations
-from typing import Optional, List
+from typing import List
 from datetime import datetime
 from enum import Enum
 
@@ -45,7 +45,7 @@ class Block(Base):
     __table_args__ = ( UniqueConstraint("pipeline_id", "name", name="uq_block_name_in_pipeline"), )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     pipeline_id: Mapped[int] = mapped_column(ForeignKey("pipelines.id", ondelete="CASCADE"), nullable=False, index=True)
-    type: Mapped[BlockType] = mapped_column(SAEnum(BlockType), nullable=False)
+    type: Mapped["BlockType"] = mapped_column(SAEnum(BlockType), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     config_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     pipeline: Mapped["Pipeline"] = relationship(back_populates="blocks")
@@ -55,10 +55,7 @@ class Block(Base):
 
 class Edge(Base):
     __tablename__ = "edges"
-    __table_args__ = (
-        UniqueConstraint("pipeline_id", "from_block_id", "to_block_id", name="uq_edge_unique"),
-        Index("ix_edges_from_to", "from_block_id", "to_block_id"),
-    )
+    __table_args__ = ( UniqueConstraint("pipeline_id", "from_block_id", "to_block_id", name="uq_edge_unique"), Index("ix_edges_from_to", "from_block_id", "to_block_id"), )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     pipeline_id: Mapped[int] = mapped_column(ForeignKey("pipelines.id", ondelete="CASCADE"), nullable=False, index=True)
     from_block_id: Mapped[int] = mapped_column(ForeignKey("blocks.id", ondelete="CASCADE"), nullable=False)
@@ -72,7 +69,7 @@ class PipelineRun(Base):
     __table_args__ = ( Index("ix_pipeline_runs_status", "status"), Index("ix_pipeline_runs_started_at", "started_at"), )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     pipeline_id: Mapped[int] = mapped_column(ForeignKey("pipelines.id", ondelete="CASCADE"), nullable=False, index=True)
-    status: Mapped[RunStatus] = mapped_column(SAEnum(RunStatus), default=RunStatus.QUEUED, nullable=False)
+    status: Mapped["RunStatus"] = mapped_column(SAEnum(RunStatus), default=RunStatus.QUEUED, nullable=False)
     correlation_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -86,7 +83,7 @@ class BlockRun(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     pipeline_run_id: Mapped[int] = mapped_column(ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=False, index=True)
     block_id: Mapped[int] = mapped_column(ForeignKey("blocks.id", ondelete="CASCADE"), nullable=False, index=True)
-    status: Mapped[RunStatus] = mapped_column(SAEnum(RunStatus), default=RunStatus.QUEUED, nullable=False)
+    status: Mapped["RunStatus"] = mapped_column(SAEnum(RunStatus), default=RunStatus.QUEUED, nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     worker_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_msg: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -102,7 +99,7 @@ class Artifact(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     pipeline_run_id: Mapped[int] = mapped_column(ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=False, index=True)
     block_run_id: Mapped[int | None] = mapped_column(ForeignKey("block_runs.id", ondelete="SET NULL"), nullable=True, index=True)
-    kind: Mapped[ArtifactKind] = mapped_column(SAEnum(ArtifactKind), default=ArtifactKind.GENERIC, nullable=False)
+    kind: Mapped["ArtifactKind"] = mapped_column(SAEnum(ArtifactKind), default=ArtifactKind.GENERIC, nullable=False)
     uri: Mapped[str] = mapped_column(String(500), nullable=False)
     preview_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     pipeline_run: Mapped["PipelineRun"] = relationship(back_populates="artifacts")
@@ -120,3 +117,14 @@ class BlockQueue(Base):
     taken_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     taken_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     attempt: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+class LogRecord(Base):
+    __tablename__ = "logs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pipeline_run_id: Mapped[int | None] = mapped_column(ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=True, index=True)
+    block_run_id: Mapped[int | None] = mapped_column(ForeignKey("block_runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    level: Mapped[str] = mapped_column(String(16), nullable=False, default="INFO")
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    extra_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    worker_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), nullable=False)

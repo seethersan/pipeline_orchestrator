@@ -7,16 +7,10 @@ from sqlalchemy import select, and_, delete
 from app import models
 from app.steps.registry import REGISTRY
 from app.core.scheduler import Scheduler
+from app.infra.logsink import log_event
 
 class WorkerRunner:
-    """Simple worker that:
-    - claims the next item from BlockQueue (by priority, then enqueued_at)
-    - marks/creates the BlockRun as RUNNING
-    - executes the step implementation based on Block.type
-    - updates BlockRun status (SUCCEEDED/FAILED)
-    - removes the queue item
-    - schedules dependents when a block succeeds
-    """
+    """Worker that processes one queued block at a time and logs start/success/failure."""
     def __init__(self, db: Session, worker_id: str = "worker-1"):
         self.db = db
         self.worker_id = worker_id
@@ -65,6 +59,17 @@ class WorkerRunner:
         self.db.add(br)
         self.db.commit()
 
+        # LOG: start
+        log_event(
+            self.db,
+            level="INFO",
+            message="block_start",
+            pipeline_run_id=br.pipeline_run_id,
+            block_run_id=br.id,
+            worker_id=self.worker_id,
+            extra={"block_id": br.block_id},
+        )
+
         block = self.db.get(models.Block, q.block_id)
         step_fn = REGISTRY.get(block.type)
 
@@ -76,6 +81,18 @@ class WorkerRunner:
             br.finished_at = datetime.utcnow()
             self.db.add(br)
             self.db.commit()
+
+            # LOG: success
+            log_event(
+                self.db,
+                level="INFO",
+                message="block_succeeded",
+                pipeline_run_id=br.pipeline_run_id,
+                block_run_id=br.id,
+                worker_id=self.worker_id,
+                extra={"block_id": br.block_id},
+            )
+
             # schedule downstream
             self.scheduler.on_block_finished(q.pipeline_run_id, q.block_id)
         except Exception as e:
@@ -84,8 +101,18 @@ class WorkerRunner:
             br.finished_at = datetime.utcnow()
             self.db.add(br)
             self.db.commit()
+
+            # LOG: failure
+            log_event(
+                self.db,
+                level="ERROR",
+                message="block_failed",
+                pipeline_run_id=br.pipeline_run_id,
+                block_run_id=br.id,
+                worker_id=self.worker_id,
+                extra={"block_id": br.block_id, "error": str(e)},
+            )
         finally:
-            # remove from queue
             self.db.execute(delete(models.BlockQueue).where(models.BlockQueue.id == q.id))
             self.db.commit()
 

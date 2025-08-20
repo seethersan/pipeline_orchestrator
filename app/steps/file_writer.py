@@ -1,10 +1,10 @@
-
 from __future__ import annotations
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from pathlib import Path
 from app import models
 from app.infra.artifacts import ensure_dir, copy_file
+
 
 def run(db: Session, block_run_id: int) -> None:
     br = db.get(models.BlockRun, block_run_id)
@@ -18,12 +18,16 @@ def run(db: Session, block_run_id: int) -> None:
     if not source_kind:
         raise ValueError("FileWriter requires 'source_kind' in config")
 
-    art = db.execute(
-        select(models.Artifact).where(
-            models.Artifact.pipeline_run_id == run.id,
-            models.Artifact.kind == getattr(models.ArtifactKind, source_kind)
+    art = (
+        db.execute(
+            select(models.Artifact).where(
+                models.Artifact.pipeline_run_id == run.id,
+                models.Artifact.kind == getattr(models.ArtifactKind, source_kind),
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     if not art:
         raise RuntimeError(f"No upstream artifact for kind {source_kind}")
 
@@ -37,6 +41,7 @@ def run(db: Session, block_run_id: int) -> None:
         block_run_id=br.id,
         kind=getattr(models.ArtifactKind, source_kind),
         uri=str(dst),
-        preview_json=art.preview_json
+        preview_json=art.preview_json,
     )
-    db.add(final_art); db.commit()
+    db.add(final_art)
+    db.commit()

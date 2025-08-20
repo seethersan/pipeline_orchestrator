@@ -1,7 +1,7 @@
-
 from __future__ import annotations
 import asyncio
 from typing import Set, Dict, Any
+
 
 class SSEBroadcaster:
     def __init__(self) -> None:
@@ -21,5 +21,6 @@ class SSEBroadcaster:
                 q.put_nowait(event)
             except Exception:
                 pass
+
 
 broadcaster = SSEBroadcaster()

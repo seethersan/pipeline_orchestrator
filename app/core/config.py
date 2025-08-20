@@ -1,10 +1,12 @@
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from pathlib import Path
 
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False)
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", case_sensitive=False
+    )
 
     # App
     APP_NAME: str = Field(default="pipeline-orchestrator")
@@ -19,5 +21,6 @@ class Settings(BaseSettings):
     def sqlite_uri(self) -> str:
         path = Path(self.SQLITE_PATH).expanduser().resolve()
         return f"sqlite+pysqlite:///{path}"
+
 
 settings = Settings()

@@ -1,12 +1,13 @@
-
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Set, Tuple
+
 
 class CycleError(Exception):
     def __init__(self, cycle_path: List[int]):
         self.cycle_path = cycle_path
         super().__init__(f"DAG has a cycle: {' -> '.join(map(str, cycle_path))}")
+
 
 @dataclass(frozen=True)
 class Graph:
@@ -14,6 +15,7 @@ class Graph:
     edges: List[Tuple[int, int]]
     adj: Dict[int, Set[int]]
     indegree: Dict[int, int]
+
 
 def build_graph(block_ids: List[int], edges: List[Tuple[int, int]]) -> Graph:
     nodes = set(block_ids)
@@ -28,6 +30,7 @@ def build_graph(block_ids: List[int], edges: List[Tuple[int, int]]) -> Graph:
             adj[u].add(v)
             indegree[v] += 1
     return Graph(nodes=nodes, edges=edges, adj=adj, indegree=indegree)
+
 
 def topological_sort(block_ids: List[int], edges: List[Tuple[int, int]]) -> List[int]:
     g = build_graph(block_ids, edges)
@@ -46,6 +49,7 @@ def topological_sort(block_ids: List[int], edges: List[Tuple[int, int]]) -> List
         visited: Set[int] = set()
         stack: Set[int] = set()
         path: List[int] = []
+
         def dfs(u: int) -> bool:
             visited.add(u)
             stack.add(u)
@@ -60,6 +64,7 @@ def topological_sort(block_ids: List[int], edges: List[Tuple[int, int]]) -> List
             stack.remove(u)
             path.pop()
             return False
+
         for start in g.nodes:
             if start not in visited:
                 if dfs(start):
@@ -74,11 +79,18 @@ def topological_sort(block_ids: List[int], edges: List[Tuple[int, int]]) -> List
         raise CycleError([])
     return order
 
+
 def find_roots(block_ids: List[int], edges: List[Tuple[int, int]]) -> List[int]:
     g = build_graph(block_ids, edges)
     return [n for n, d in g.indegree.items() if d == 0]
 
-def next_runnables(block_ids: List[int], edges: List[Tuple[int, int]], completed: Set[int], running: Set[int] | None = None) -> Set[int]:
+
+def next_runnables(
+    block_ids: List[int],
+    edges: List[Tuple[int, int]],
+    completed: Set[int],
+    running: Set[int] | None = None,
+) -> Set[int]:
     g = build_graph(block_ids, edges)
     running = running or set()
     preds: Dict[int, Set[int]] = {n: set() for n in block_ids}

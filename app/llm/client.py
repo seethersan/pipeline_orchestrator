@@ -1,20 +1,43 @@
-
 from __future__ import annotations
 from typing import List, Literal
 
 SentimentLabel = Literal["NEGATIVE", "NEUTRAL", "POSITIVE"]
 ToxicLabel = Literal["NON_TOXIC", "TOXIC"]
 
+
 class LLMClientProtocol:
     def classify_sentiment(self, texts: List[str]) -> List[SentimentLabel]:
         raise NotImplementedError
+
     def detect_toxicity(self, texts: List[str]) -> List[ToxicLabel]:
         raise NotImplementedError
 
+
 class LocalHeuristicClient(LLMClientProtocol):
-    POS = {"good","great","excellent","love","happy","amazing","awesome","nice","wonderful","like"}
-    NEG = {"bad","terrible","hate","sad","angry","awful","horrible","worst","dislike"}
-    TOX = {"idiot","stupid","dumb","trash","suck","moron","shut up"}
+    POS = {
+        "good",
+        "great",
+        "excellent",
+        "love",
+        "happy",
+        "amazing",
+        "awesome",
+        "nice",
+        "wonderful",
+        "like",
+    }
+    NEG = {
+        "bad",
+        "terrible",
+        "hate",
+        "sad",
+        "angry",
+        "awful",
+        "horrible",
+        "worst",
+        "dislike",
+    }
+    TOX = {"idiot", "stupid", "dumb", "trash", "suck", "moron", "shut up"}
 
     def classify_sentiment(self, texts: List[str]) -> List[SentimentLabel]:
         out: List[SentimentLabel] = []

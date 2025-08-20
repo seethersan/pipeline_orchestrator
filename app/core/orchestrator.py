@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 from datetime import datetime
 from typing import Optional
@@ -9,20 +8,26 @@ from app import models
 from app.core.scheduler import Scheduler
 from app.core.config import settings
 
+
 class Orchestrator:
     def __init__(self, db: Session):
         self.db = db
         self.scheduler = Scheduler(db)
 
-    def start_run(self, pipeline_id: int, correlation_id: Optional[str] = None) -> models.PipelineRun:
+    def start_run(
+        self, pipeline_id: int, correlation_id: Optional[str] = None
+    ) -> models.PipelineRun:
         self.scheduler.validate_dag(pipeline_id)
         run = models.PipelineRun(
             pipeline_id=pipeline_id,
             status=models.RunStatus.RUNNING,
             started_at=datetime.utcnow(),
-            correlation_id=correlation_id or f"run-{int(datetime.utcnow().timestamp())}"
+            correlation_id=correlation_id
+            or f"run-{int(datetime.utcnow().timestamp())}",
         )
-        self.db.add(run); self.db.commit(); self.db.refresh(run)
+        self.db.add(run)
+        self.db.commit()
+        self.db.refresh(run)
         self.scheduler.schedule_initial(run.id)
         return run
 
@@ -32,7 +37,9 @@ class Orchestrator:
             raise ValueError(f"PipelineRun {run_id} not found")
         run.status = models.RunStatus.SUCCEEDED if success else models.RunStatus.FAILED
         run.finished_at = datetime.utcnow()
-        self.db.add(run); self.db.commit(); self.db.refresh(run)
+        self.db.add(run)
+        self.db.commit()
+        self.db.refresh(run)
         return run
 
     # Step 6: reconcile_run -> mark run as SUCCEEDED or FAILED
@@ -41,20 +48,32 @@ class Orchestrator:
         if not run:
             raise ValueError(f"PipelineRun {run_id} not found")
 
-        blocks = self.db.query(models.Block).filter(models.Block.pipeline_id == run.pipeline_id).all()
+        blocks = (
+            self.db.query(models.Block)
+            .filter(models.Block.pipeline_id == run.pipeline_id)
+            .all()
+        )
         total_blocks = len(blocks)
         block_by_id = {b.id: b for b in blocks}
 
-        succeeded = self.db.query(models.BlockRun).filter(
-            models.BlockRun.pipeline_run_id == run.id,
-            models.BlockRun.status == models.RunStatus.SUCCEEDED
-        ).count()
+        succeeded = (
+            self.db.query(models.BlockRun)
+            .filter(
+                models.BlockRun.pipeline_run_id == run.id,
+                models.BlockRun.status == models.RunStatus.SUCCEEDED,
+            )
+            .count()
+        )
 
         # terminal failure if any block is FAILED with attempts >= max_attempts (per-block or default)
-        failures = self.db.query(models.BlockRun).filter(
-            models.BlockRun.pipeline_run_id == run.id,
-            models.BlockRun.status == models.RunStatus.FAILED
-        ).all()
+        failures = (
+            self.db.query(models.BlockRun)
+            .filter(
+                models.BlockRun.pipeline_run_id == run.id,
+                models.BlockRun.status == models.RunStatus.FAILED,
+            )
+            .all()
+        )
 
         def max_attempts_for(block_id: int) -> int:
             b = block_by_id.get(block_id)
@@ -64,17 +83,23 @@ class Orchestrator:
             except Exception:
                 return settings.MAX_ATTEMPTS_DEFAULT
 
-        terminal_fail = any(br.attempts >= max_attempts_for(br.block_id) for br in failures)
+        terminal_fail = any(
+            br.attempts >= max_attempts_for(br.block_id) for br in failures
+        )
 
         if terminal_fail and run.status != models.RunStatus.FAILED:
             run.status = models.RunStatus.FAILED
             run.finished_at = datetime.utcnow()
-            self.db.add(run); self.db.commit(); self.db.refresh(run)
+            self.db.add(run)
+            self.db.commit()
+            self.db.refresh(run)
             return run
 
         if succeeded >= total_blocks and run.status != models.RunStatus.SUCCEEDED:
             run.status = models.RunStatus.SUCCEEDED
             run.finished_at = datetime.utcnow()
-            self.db.add(run); self.db.commit(); self.db.refresh(run)
+            self.db.add(run)
+            self.db.commit()
+            self.db.refresh(run)
 
         return run

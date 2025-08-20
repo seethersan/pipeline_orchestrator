@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from starlette.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.infra.db import Base, engine
 from app.core.auth import RateLimitMiddleware
@@ -7,6 +9,16 @@ app = FastAPI(title=settings.APP_NAME)
 
 # Rate limiting middleware (per-IP, per-path)
 app.add_middleware(RateLimitMiddleware, max_per_minute=settings.RATE_LIMIT_PER_MINUTE)
+
+# CORS (for Vite dev server / Nginx UI)
+if settings.CORS_ALLOW_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.CORS_ALLOW_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 @app.on_event("startup")
@@ -29,6 +41,7 @@ for mod in [
     "app.api.admin_routes",
     "app.api.list_routes",
     "app.api.storage_routes",
+    "app.api.stream_routes",
 ]:
     try:
         m = __import__(mod, fromlist=["router"])

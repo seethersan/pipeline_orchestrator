@@ -24,16 +24,29 @@ class Settings(BaseSettings):
     # Auth & Rate limiting
     API_KEY: str | None = Field(default=None)
     RATE_LIMIT_PER_MINUTE: int = Field(default=120)
-    RATE_LIMIT_WINDOW_SECONDS: int = Field(default=2)  # test-friendly small window
+    RATE_LIMIT_WINDOW_SECONDS: int = Field(default=2)
     RATE_LIMIT_PATHS: list[str] = Field(default_factory=lambda: ["/health"])
 
-    # Artifact storage (Step 13)
+    # Artifacts
     ARTIFACTS_DIR: str = Field(default="./data/artifacts")
-    SECRET_KEY: str = Field(
-        default="dev-secret"
-    )  # used for signed URLs (HMAC). Change in production.
+    SECRET_KEY: str = Field(default="dev-secret")
     SIGNED_URL_TTL_SECONDS: int = Field(default=300)
     SIGNED_URLS_REQUIRED: bool = Field(default=False)
+
+    # CORS
+    CORS_ALLOW_ORIGINS: list[str] = Field(
+        default_factory=lambda: ["http://localhost:5173", "http://localhost:8080"]
+    )
+
+    # Streams
+    STREAM_BACKEND: str = Field(default="none")  # none|kafka|qstash|eventhubs|kinesis
+    KAFKA_BOOTSTRAP: str = Field(default="redpanda:9092")
+    KAFKA_TOPIC_DEFAULT: str = Field(default="pipeline_events")
+    # Optional cloud placeholders
+    QSTASH_URL: str | None = Field(default=None)
+    QSTASH_TOKEN: str | None = Field(default=None)
+    EVENTHUBS_CONN_STR: str | None = Field(default=None)
+    KINESIS_STREAM_NAME: str | None = Field(default=None)
 
     @property
     def sqlite_uri(self) -> str:

@@ -2,16 +2,48 @@
 version: "3.9"
 
 services:
+  redpanda:
+    image: redpandadata/redpanda:latest
+    command: >
+      redpanda start
+      --overprovisioned
+      --smp 1
+      --memory 512M
+      --reserve-memory 0M
+      --node-id 0
+      --check=false
+      --kafka-addr 0.0.0.0:9092
+      --advertise-kafka-addr redpanda:9092
+    ports:
+      - "9092:9092"   # Kafka API (internal/external)
+    restart: unless-stopped
+
+  redpanda-console:
+    image: redpandadata/console:latest
+    environment:
+      - KAFKA_BROKERS=redpanda:9092
+    ports:
+      - "8081:8080"
+    depends_on:
+      - redpanda
+    restart: unless-stopped
+
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
     env_file:
       - .env
+    environment:
+      - STREAM_BACKEND=kafka
+      - KAFKA_BOOTSTRAP=redpanda:9092
+      - KAFKA_TOPIC_DEFAULT=pipeline_events
     volumes:
       - ./data:/app/data
     ports:
       - "8000:8000"
+    depends_on:
+      - redpanda
     restart: unless-stopped
 
   worker:
@@ -20,10 +52,14 @@ services:
       dockerfile: Dockerfile.worker
     env_file:
       - .env
+    environment:
+      - STREAM_BACKEND=kafka
+      - KAFKA_BOOTSTRAP=redpanda:9092
     volumes:
       - ./data:/app/data
     depends_on:
       - api
+      - redpanda
     restart: unless-stopped
 
   ui:
@@ -31,7 +67,6 @@ services:
       context: ./ui
       dockerfile: Dockerfile
       args:
-        # build-time value for Vite (fallback in code is http://localhost:8000)
         VITE_API_BASE: "http://localhost:8000"
     ports:
       - "8080:80"

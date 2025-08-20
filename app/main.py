@@ -5,7 +5,7 @@ from app.core.auth import RateLimitMiddleware
 
 app = FastAPI(title=settings.APP_NAME)
 
-# Rate limiting middleware (global, per-IP)
+# Rate limiting middleware (per-IP, per-path)
 app.add_middleware(RateLimitMiddleware, max_per_minute=settings.RATE_LIMIT_PER_MINUTE)
 
 
@@ -28,6 +28,7 @@ for mod in [
     "app.api.timeline_routes",
     "app.api.admin_routes",
     "app.api.list_routes",
+    "app.api.storage_routes",
 ]:
     try:
         m = __import__(mod, fromlist=["router"])

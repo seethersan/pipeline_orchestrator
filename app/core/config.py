@@ -24,12 +24,16 @@ class Settings(BaseSettings):
     # Auth & Rate limiting
     API_KEY: str | None = Field(default=None)
     RATE_LIMIT_PER_MINUTE: int = Field(default=120)
-    RATE_LIMIT_WINDOW_SECONDS: int = Field(
-        default=2
-    )  # short window keeps tests isolated
-    RATE_LIMIT_PATHS: list[str] = Field(
-        default_factory=lambda: ["/health"]
-    )  # limit health only by default
+    RATE_LIMIT_WINDOW_SECONDS: int = Field(default=2)  # test-friendly small window
+    RATE_LIMIT_PATHS: list[str] = Field(default_factory=lambda: ["/health"])
+
+    # Artifact storage (Step 13)
+    ARTIFACTS_DIR: str = Field(default="./data/artifacts")
+    SECRET_KEY: str = Field(
+        default="dev-secret"
+    )  # used for signed URLs (HMAC). Change in production.
+    SIGNED_URL_TTL_SECONDS: int = Field(default=300)
+    SIGNED_URLS_REQUIRED: bool = Field(default=False)
 
     @property
     def sqlite_uri(self) -> str:

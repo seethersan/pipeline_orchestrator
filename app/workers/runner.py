@@ -1,16 +1,24 @@
+
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import select, and_, delete
+from sqlalchemy import select, and_, delete, or_
 
 from app import models
 from app.steps.registry import REGISTRY
 from app.core.scheduler import Scheduler
+from app.core.orchestrator import Orchestrator
+from app.core.config import settings
 from app.infra.logsink import log_event
 
 class WorkerRunner:
-    """Worker that processes one queued block at a time and logs start/success/failure."""
+    """Worker that processes one queued block at a time.
+    - Respects not_before_at
+    - Logs start/success/failure
+    - Retries with exponential backoff
+    - Reconciles PipelineRun status after each execution
+    """
     def __init__(self, db: Session, worker_id: str = "worker-1"):
         self.db = db
         self.worker_id = worker_id
@@ -18,18 +26,15 @@ class WorkerRunner:
 
     def _claim_next(self) -> Optional[models.BlockQueue]:
         q = self.db.execute(
-            select(models.BlockQueue).order_by(
-                models.BlockQueue.priority.asc(),
-                models.BlockQueue.enqueued_at.asc()
-            )
+            select(models.BlockQueue)
+            .where(or_(models.BlockQueue.not_before_at.is_(None), models.BlockQueue.not_before_at <= datetime.utcnow()))
+            .order_by(models.BlockQueue.priority.asc(), models.BlockQueue.enqueued_at.asc())
         ).scalars().first()
         if not q:
             return None
         q.taken_by = self.worker_id
         q.taken_at = datetime.utcnow()
-        self.db.add(q)
-        self.db.commit()
-        self.db.refresh(q)
+        self.db.add(q); self.db.commit(); self.db.refresh(q)
         return q
 
     def process_next(self) -> bool:
@@ -39,36 +44,22 @@ class WorkerRunner:
 
         br = self.db.execute(
             select(models.BlockRun).where(
-                and_(
-                    models.BlockRun.pipeline_run_id == q.pipeline_run_id,
-                    models.BlockRun.block_id == q.block_id
-                )
+                and_(models.BlockRun.pipeline_run_id == q.pipeline_run_id, models.BlockRun.block_id == q.block_id)
             )
         ).scalar_one_or_none()
         if not br:
-            br = models.BlockRun(
-                pipeline_run_id=q.pipeline_run_id,
-                block_id=q.block_id
-            )
-            self.db.add(br)
-            self.db.flush()
+            br = models.BlockRun(pipeline_run_id=q.pipeline_run_id, block_id=q.block_id)
+            self.db.add(br); self.db.flush()
 
         br.status = models.RunStatus.RUNNING
         br.worker_id = self.worker_id
+        br.attempts = (br.attempts or 0) + 1
         br.started_at = datetime.utcnow()
-        self.db.add(br)
-        self.db.commit()
+        self.db.add(br); self.db.commit()
 
-        # LOG: start
-        log_event(
-            self.db,
-            level="INFO",
-            message="block_start",
-            pipeline_run_id=br.pipeline_run_id,
-            block_run_id=br.id,
-            worker_id=self.worker_id,
-            extra={"block_id": br.block_id},
-        )
+        log_event(self.db, level="INFO", message="block_start",
+                  pipeline_run_id=br.pipeline_run_id, block_run_id=br.id,
+                  worker_id=self.worker_id, extra={"block_id": br.block_id})
 
         block = self.db.get(models.Block, q.block_id)
         step_fn = REGISTRY.get(block.type)
@@ -77,41 +68,46 @@ class WorkerRunner:
             if not step_fn:
                 raise RuntimeError(f"No step implementation for {block.type}")
             step_fn(self.db, br.id)
+
             br.status = models.RunStatus.SUCCEEDED
             br.finished_at = datetime.utcnow()
-            self.db.add(br)
-            self.db.commit()
+            self.db.add(br); self.db.commit()
 
-            # LOG: success
-            log_event(
-                self.db,
-                level="INFO",
-                message="block_succeeded",
-                pipeline_run_id=br.pipeline_run_id,
-                block_run_id=br.id,
-                worker_id=self.worker_id,
-                extra={"block_id": br.block_id},
-            )
+            log_event(self.db, level="INFO", message="block_succeeded",
+                      pipeline_run_id=br.pipeline_run_id, block_run_id=br.id,
+                      worker_id=self.worker_id, extra={"block_id": br.block_id})
 
-            # schedule downstream
             self.scheduler.on_block_finished(q.pipeline_run_id, q.block_id)
+            Orchestrator(self.db).reconcile_run(q.pipeline_run_id)
+
         except Exception as e:
             br.status = models.RunStatus.FAILED
             br.error_msg = str(e)
             br.finished_at = datetime.utcnow()
-            self.db.add(br)
-            self.db.commit()
+            self.db.add(br); self.db.commit()
 
-            # LOG: failure
-            log_event(
-                self.db,
-                level="ERROR",
-                message="block_failed",
-                pipeline_run_id=br.pipeline_run_id,
-                block_run_id=br.id,
-                worker_id=self.worker_id,
-                extra={"block_id": br.block_id, "error": str(e)},
-            )
+            log_event(self.db, level="ERROR", message="block_failed",
+                      pipeline_run_id=br.pipeline_run_id, block_run_id=br.id,
+                      worker_id=self.worker_id, extra={"block_id": br.block_id, "error": str(e)})
+
+            Orchestrator(self.db).reconcile_run(q.pipeline_run_id)
+
+            # Retry logic
+            retry_cfg = (block.config_json or {}).get("retry", {}) if block else {}
+            max_attempts = int(retry_cfg.get("max_attempts", settings.MAX_ATTEMPTS_DEFAULT))
+            backoff_base = int(retry_cfg.get("backoff_seconds", settings.BACKOFF_BASE_SECONDS))
+
+            if br.attempts < max_attempts:
+                delay = backoff_base * (2 ** max(0, br.attempts - 1))
+                not_before = datetime.utcnow() + timedelta(seconds=delay)
+                self.db.add(models.BlockQueue(
+                    pipeline_run_id=q.pipeline_run_id,
+                    block_id=q.block_id,
+                    priority=q.priority,
+                    not_before_at=not_before
+                ))
+                self.db.commit()
+
         finally:
             self.db.execute(delete(models.BlockQueue).where(models.BlockQueue.id == q.id))
             self.db.commit()

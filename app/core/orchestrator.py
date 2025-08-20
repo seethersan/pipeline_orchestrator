@@ -3,9 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from app import models
 from app.core.scheduler import Scheduler
+from app.core.config import settings
 
 class Orchestrator:
     def __init__(self, db: Session):
@@ -31,4 +33,48 @@ class Orchestrator:
         run.status = models.RunStatus.SUCCEEDED if success else models.RunStatus.FAILED
         run.finished_at = datetime.utcnow()
         self.db.add(run); self.db.commit(); self.db.refresh(run)
+        return run
+
+    # Step 6: reconcile_run -> mark run as SUCCEEDED or FAILED
+    def reconcile_run(self, run_id: int) -> models.PipelineRun:
+        run = self.db.get(models.PipelineRun, run_id)
+        if not run:
+            raise ValueError(f"PipelineRun {run_id} not found")
+
+        blocks = self.db.query(models.Block).filter(models.Block.pipeline_id == run.pipeline_id).all()
+        total_blocks = len(blocks)
+        block_by_id = {b.id: b for b in blocks}
+
+        succeeded = self.db.query(models.BlockRun).filter(
+            models.BlockRun.pipeline_run_id == run.id,
+            models.BlockRun.status == models.RunStatus.SUCCEEDED
+        ).count()
+
+        # terminal failure if any block is FAILED with attempts >= max_attempts (per-block or default)
+        failures = self.db.query(models.BlockRun).filter(
+            models.BlockRun.pipeline_run_id == run.id,
+            models.BlockRun.status == models.RunStatus.FAILED
+        ).all()
+
+        def max_attempts_for(block_id: int) -> int:
+            b = block_by_id.get(block_id)
+            retry = (b.config_json or {}).get("retry", {}) if b else {}
+            try:
+                return int(retry.get("max_attempts", settings.MAX_ATTEMPTS_DEFAULT))
+            except Exception:
+                return settings.MAX_ATTEMPTS_DEFAULT
+
+        terminal_fail = any(br.attempts >= max_attempts_for(br.block_id) for br in failures)
+
+        if terminal_fail and run.status != models.RunStatus.FAILED:
+            run.status = models.RunStatus.FAILED
+            run.finished_at = datetime.utcnow()
+            self.db.add(run); self.db.commit(); self.db.refresh(run)
+            return run
+
+        if succeeded >= total_blocks and run.status != models.RunStatus.SUCCEEDED:
+            run.status = models.RunStatus.SUCCEEDED
+            run.finished_at = datetime.utcnow()
+            self.db.add(run); self.db.commit(); self.db.refresh(run)
+
         return run

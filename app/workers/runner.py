@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import select, and_, delete, or_
+from sqlalchemy import select, and_, delete, or_, text
 
 from app import models
 from app.steps.registry import REGISTRY
@@ -14,6 +14,7 @@ from app.infra.logsink import log_event
 
 class WorkerRunner:
     """Worker that processes one queued block at a time.
+    - Atomic queue claim (single UPDATE with subquery, works on SQLite)
     - Respects not_before_at
     - Logs start/success/failure
     - Retries with exponential backoff
@@ -25,16 +26,23 @@ class WorkerRunner:
         self.scheduler = Scheduler(db)
 
     def _claim_next(self) -> Optional[models.BlockQueue]:
-        q = self.db.execute(
-            select(models.BlockQueue)
-            .where(or_(models.BlockQueue.not_before_at.is_(None), models.BlockQueue.not_before_at <= datetime.utcnow()))
-            .order_by(models.BlockQueue.priority.asc(), models.BlockQueue.enqueued_at.asc())
-        ).scalars().first()
-        if not q:
+        now = datetime.utcnow()
+        sql = text("""
+            UPDATE block_queue
+            SET taken_by = :worker, taken_at = :now
+            WHERE id = (
+              SELECT id FROM block_queue
+              WHERE (taken_by IS NULL)
+                AND (not_before_at IS NULL OR not_before_at <= :now)
+              ORDER BY priority ASC, enqueued_at ASC
+              LIMIT 1
+            )
+            RETURNING id
+        """ )
+        row = self.db.execute(sql, {"worker": self.worker_id, "now": now}).fetchone()
+        if not row:
             return None
-        q.taken_by = self.worker_id
-        q.taken_at = datetime.utcnow()
-        self.db.add(q); self.db.commit(); self.db.refresh(q)
+        q = self.db.get(models.BlockQueue, row.id)
         return q
 
     def process_next(self) -> bool:

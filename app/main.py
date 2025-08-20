@@ -1,9 +1,6 @@
-
 from fastapi import FastAPI
 from app.core.config import settings
 from app.infra.db import Base, engine
-from app.api.routes import router as api_router
-from app.api.logs_routes import router as logs_router
 
 app = FastAPI(title=settings.APP_NAME)
 
@@ -11,13 +8,22 @@ app = FastAPI(title=settings.APP_NAME)
 def on_startup():
     Base.metadata.create_all(bind=engine)
 
+from app.api.routes import router as api_router
 app.include_router(api_router)
-app.include_router(logs_router)
+
+for mod in [
+    "app.api.logs_routes",
+    "app.api.artifacts_routes",
+    "app.api.graph_routes",
+    "app.api.ops_routes",
+    "app.api.import_routes",
+]:
+    try:
+        m = __import__(mod, fromlist=["router"])
+        app.include_router(getattr(m, "router"))
+    except Exception:
+        pass
 
 @app.get("/health")
 def health():
     return {"status": "ok", "app": settings.APP_NAME}
-
-@app.get("/version")
-def version():
-    return {"version": "0.1.0"}

@@ -24,7 +24,7 @@ def start_pipeline_run(pipeline_id: int, db: Session = Depends(get_db)):
     out = RunOut(
         id=run.id,
         pipeline_id=run.pipeline_id,
-        status=run.status.value,
+        status=run.status.value if hasattr(run.status, "value") else str(run.status),
         correlation_id=run.correlation_id,
         started_at=run.started_at,
         finished_at=run.finished_at
@@ -39,7 +39,7 @@ def get_run(run_id: int, db: Session = Depends(get_db)):
     return RunOut(
         id=run.id,
         pipeline_id=run.pipeline_id,
-        status=run.status.value,
+        status=run.status.value if hasattr(run.status, "value") else str(run.status),
         correlation_id=run.correlation_id,
         started_at=run.started_at,
         finished_at=run.finished_at

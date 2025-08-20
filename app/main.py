@@ -21,6 +21,8 @@ for mod in [
     "app.api.ops_routes",
     "app.api.import_routes",
     "app.api.export_routes",
+    "app.api.timeline_routes",
+    "app.api.admin_routes",
 ]:
     try:
         m = __import__(mod, fromlist=["router"])

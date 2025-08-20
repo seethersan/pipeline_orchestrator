@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app import models
 from app.core.scheduler import Scheduler
 from app.core.config import settings
+from app.core.notify import notify_run_finished
 
 
 class Orchestrator:
@@ -40,9 +41,9 @@ class Orchestrator:
         self.db.add(run)
         self.db.commit()
         self.db.refresh(run)
+        notify_run_finished(self.db, run)
         return run
 
-    # Step 6: reconcile_run -> mark run as SUCCEEDED or FAILED
     def reconcile_run(self, run_id: int) -> models.PipelineRun:
         run = self.db.get(models.PipelineRun, run_id)
         if not run:
@@ -65,7 +66,6 @@ class Orchestrator:
             .count()
         )
 
-        # terminal failure if any block is FAILED with attempts >= max_attempts (per-block or default)
         failures = (
             self.db.query(models.BlockRun)
             .filter(
@@ -84,7 +84,7 @@ class Orchestrator:
                 return settings.MAX_ATTEMPTS_DEFAULT
 
         terminal_fail = any(
-            br.attempts >= max_attempts_for(br.block_id) for br in failures
+            (br.attempts or 0) >= max_attempts_for(br.block_id) for br in failures
         )
 
         if terminal_fail and run.status != models.RunStatus.FAILED:
@@ -93,6 +93,7 @@ class Orchestrator:
             self.db.add(run)
             self.db.commit()
             self.db.refresh(run)
+            notify_run_finished(self.db, run)
             return run
 
         if succeeded >= total_blocks and run.status != models.RunStatus.SUCCEEDED:
@@ -101,5 +102,6 @@ class Orchestrator:
             self.db.add(run)
             self.db.commit()
             self.db.refresh(run)
+            notify_run_finished(self.db, run)
 
         return run

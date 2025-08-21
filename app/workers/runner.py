@@ -1,6 +1,8 @@
 from __future__ import annotations
-from datetime import datetime, timedelta
+import os, time, random
+from datetime import datetime, timezone, timedelta
 from typing import Optional
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from sqlalchemy import select, and_, delete, or_, text
 
@@ -42,27 +44,48 @@ class WorkerRunner:
             RETURNING id
         """
         )
-        row = self.db.execute(sql, {"worker": self.worker_id, "now": now}).fetchone()
-        if not row:
-            return None
-        q = self.db.get(models.BlockQueue, row.id)
-        return q
+
+        max_attempts = int(os.getenv("SQLITE_CLAIM_RETRIES", "8"))
+        base = float(os.getenv("SQLITE_CLAIM_BACKOFF", "0.05"))  # seconds
+
+        for attempt in range(max_attempts):
+            try:
+                now = datetime.now(timezone.utc).replace(tzinfo=None)
+                row = self.db.execute(
+                    sql, {"worker": self.worker_id, "now": now}
+                ).fetchone()
+                # IMPORTANT: commit immediately to release write lock
+                self.db.commit()
+                return row[0] if row else None
+            except OperationalError as e:
+                msg = str(e).lower()
+                if "database is locked" in msg or "database is busy" in msg:
+                    # rollback and retry with exponential backoff + jitter
+                    self.db.rollback()
+                    sleep = base * (2**attempt) + random.random() * 0.02
+                    time.sleep(min(sleep, 0.8))  # cap the wait
+                    continue
+                # other OperationalErrors should propagate
+                raise
 
     def process_next(self) -> bool:
-        q = self._claim_next()
-        if not q:
+        claimed_id = self._claim_next()
+        if not claimed_id:
+            time.sleep(0.05)  # gentle yield when no work
             return False
 
         br = self.db.execute(
             select(models.BlockRun).where(
                 and_(
-                    models.BlockRun.pipeline_run_id == q.pipeline_run_id,
-                    models.BlockRun.block_id == q.block_id,
+                    models.BlockRun.pipeline_run_id == claimed_id.pipeline_run_id,
+                    models.BlockRun.block_id == claimed_id.block_id,
                 )
             )
         ).scalar_one_or_none()
         if not br:
-            br = models.BlockRun(pipeline_run_id=q.pipeline_run_id, block_id=q.block_id)
+            br = models.BlockRun(
+                pipeline_run_id=claimed_id.pipeline_run_id, block_id=claimed_id.block_id
+            )
             self.db.add(br)
             self.db.flush()
 
@@ -83,7 +106,7 @@ class WorkerRunner:
             extra={"block_id": br.block_id},
         )
 
-        block = self.db.get(models.Block, q.block_id)
+        block = self.db.get(models.Block, claimed_id.block_id)
         step_fn = REGISTRY.get(block.type)
 
         try:
@@ -106,8 +129,10 @@ class WorkerRunner:
                 extra={"block_id": br.block_id},
             )
 
-            self.scheduler.on_block_finished(q.pipeline_run_id, q.block_id)
-            Orchestrator(self.db).reconcile_run(q.pipeline_run_id)
+            self.scheduler.on_block_finished(
+                claimed_id.pipeline_run_id, claimed_id.block_id
+            )
+            Orchestrator(self.db).reconcile_run(claimed_id.pipeline_run_id)
 
         except Exception as e:
             br.status = models.RunStatus.FAILED
@@ -126,7 +151,7 @@ class WorkerRunner:
                 extra={"block_id": br.block_id, "error": str(e)},
             )
 
-            Orchestrator(self.db).reconcile_run(q.pipeline_run_id)
+            Orchestrator(self.db).reconcile_run(claimed_id.pipeline_run_id)
 
             # Retry logic
             retry_cfg = (block.config_json or {}).get("retry", {}) if block else {}
@@ -142,9 +167,9 @@ class WorkerRunner:
                 not_before = datetime.utcnow() + timedelta(seconds=delay)
                 self.db.add(
                     models.BlockQueue(
-                        pipeline_run_id=q.pipeline_run_id,
-                        block_id=q.block_id,
-                        priority=q.priority,
+                        pipeline_run_id=claimed_id.pipeline_run_id,
+                        block_id=claimed_id.block_id,
+                        priority=claimed_id.priority,
                         not_before_at=not_before,
                     )
                 )
@@ -152,7 +177,7 @@ class WorkerRunner:
 
         finally:
             self.db.execute(
-                delete(models.BlockQueue).where(models.BlockQueue.id == q.id)
+                delete(models.BlockQueue).where(models.BlockQueue.id == claimed_id.id)
             )
             self.db.commit()
 

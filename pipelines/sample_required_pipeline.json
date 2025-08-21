@@ -1,0 +1,17 @@
+{
+  "name": "required-sample",
+  "replace_if_exists": true,
+  "blocks": [
+    {"name": "csv",   "type": "CSV_READER",    "config": {"input_path": "/app/data/sample_messages.csv"}},
+    {"name": "sent",  "type": "LLM_SENTIMENT"},
+    {"name": "tox",   "type": "LLM_TOXICITY"},
+    {"name": "w_sent","type": "CSV_WRITER",    "config": {"name": "sentiment_output"}},
+    {"name": "w_tox", "type": "CSV_WRITER",    "config": {"name": "toxicity_output"}}
+  ],
+  "edges": [
+    {"from": "csv", "to": "sent"},
+    {"from": "csv", "to": "tox"},
+    {"from": "sent","to": "w_sent"},
+    {"from": "tox", "to": "w_tox"}
+  ]
+}

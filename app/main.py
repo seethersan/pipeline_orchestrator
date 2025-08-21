@@ -6,6 +6,9 @@ from app.infra.db import Base, engine
 from app.core.auth import RateLimitMiddleware
 
 app = FastAPI(title=settings.APP_NAME)
+from app.core.logging import setup_logging
+
+setup_logging()
 
 # Rate limiting middleware (per-IP, per-path)
 app.add_middleware(RateLimitMiddleware, max_per_minute=settings.RATE_LIMIT_PER_MINUTE)
@@ -38,6 +41,7 @@ for mod in [
     "app.api.import_routes",
     "app.api.export_routes",
     "app.api.timeline_routes",
+    "app.api.logs_stream",
     "app.api.admin_routes",
     "app.api.list_routes",
     "app.api.storage_routes",

@@ -1,6 +1,3 @@
-
-version: "3.9"
-
 services:
   redpanda:
     image: redpandadata/redpanda:latest
@@ -46,22 +43,6 @@ services:
       - redpanda
     restart: unless-stopped
 
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
-    env_file:
-      - .env
-    environment:
-      - STREAM_BACKEND=kafka
-      - KAFKA_BOOTSTRAP=redpanda:9092
-    volumes:
-      - ./data:/app/data
-    depends_on:
-      - api
-      - redpanda
-    restart: unless-stopped
-
   ui:
     build:
       context: ./ui
@@ -72,4 +53,52 @@ services:
       - "8080:80"
     depends_on:
       - api
+    restart: unless-stopped
+
+  worker1:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    env_file:
+      - .env
+    environment:
+      - STREAM_BACKEND=kafka
+      - KAFKA_BOOTSTRAP=redpanda:9092
+      - WORKER_ID=worker-1
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - api
+      - redpanda
+    restart: unless-stopped
+
+  worker2:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    env_file:
+      - .env
+    environment:
+      - STREAM_BACKEND=kafka
+      - KAFKA_BOOTSTRAP=redpanda:9092
+      - WORKER_ID=worker-2
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - api
+      - redpanda
+    restart: unless-stopped
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    command: ["poetry", "run", "python", "-m", "app.orchestrator.loop"]
+    env_file:
+      - .env
+    environment:
+      - STREAM_BACKEND=kafka
+      - KAFKA_BOOTSTRAP=redpanda:9092
+    depends_on:
+      - redpanda
     restart: unless-stopped

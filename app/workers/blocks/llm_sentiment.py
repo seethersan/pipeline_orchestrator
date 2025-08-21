@@ -10,6 +10,7 @@ PROMPT_TEMPLATE = (
     "Answer:\n"
 )
 
+
 def run(config: Dict[str, Any], rows: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     text_field = config.get("text_field", "text")
     out: List[Dict[str, Any]] = []

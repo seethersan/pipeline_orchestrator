@@ -1,8 +1,9 @@
-
-FROM python:3.11-slim
+FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential && rm -rf /var/lib/apt/lists/*
-RUN pip install --no-cache-dir sqlalchemy "pydantic>=2,<3" pydantic-settings aiokafka
+RUN pip install --no-cache-dir poetry
+COPY pyproject.toml poetry.lock* /app/
+RUN poetry install --no-interaction --no-ansi
 COPY . /app
-CMD ["python", "-m", "app.workers.loop"]
+CMD ["poetry", "run", "python", "-m", "app.workers.loop"]

@@ -2,11 +2,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from pathlib import Path
 
-
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", case_sensitive=False
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False)
 
     # App
     APP_NAME: str = Field(default="pipeline-orchestrator")
@@ -33,25 +30,27 @@ class Settings(BaseSettings):
     SIGNED_URL_TTL_SECONDS: int = Field(default=300)
     SIGNED_URLS_REQUIRED: bool = Field(default=False)
 
-    # CORS
-    CORS_ALLOW_ORIGINS: list[str] = Field(
-        default_factory=lambda: ["http://localhost:5173", "http://localhost:8080"]
-    )
+    # CORS (for UI)
+    CORS_ALLOW_ORIGINS: list[str] = Field(default_factory=lambda: ["http://localhost:5173","http://localhost:8080"])
 
     # Streams
     STREAM_BACKEND: str = Field(default="none")  # none|kafka|qstash|eventhubs|kinesis
     KAFKA_BOOTSTRAP: str = Field(default="redpanda:9092")
     KAFKA_TOPIC_DEFAULT: str = Field(default="pipeline_events")
-    # Optional cloud placeholders
     QSTASH_URL: str | None = Field(default=None)
     QSTASH_TOKEN: str | None = Field(default=None)
     EVENTHUBS_CONN_STR: str | None = Field(default=None)
     KINESIS_STREAM_NAME: str | None = Field(default=None)
 
+    # LLM
+    LLM_PROVIDER: str = Field(default="mock")  # mock|gemini
+    LLM_TEMPERATURE: float = Field(default=0.0)
+    GEMINI_API_KEY: str | None = Field(default=None)
+    GEMINI_MODEL: str = Field(default="gemini-1.5-flash")
+
     @property
     def sqlite_uri(self) -> str:
         path = Path(self.SQLITE_PATH).expanduser().resolve()
         return f"sqlite+pysqlite:///{path}"
-
 
 settings = Settings()

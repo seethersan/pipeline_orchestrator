@@ -40,9 +40,11 @@ class KafkaLogHandler(logging.Handler):
         try:
             from app.core.streams import stream_publish  # async
 
-            loop = asyncio.get_event_loop()
+            # Use an existing running loop only; avoid creating new loops implicitly
+            loop = asyncio.get_running_loop()
+            if loop.is_closed():
+                return
             payload = self.format(record)
-            # publish as JSON object
             data = json.loads(payload)
             loop.create_task(stream_publish(data, topic=self.topic, key="log"))
         except Exception:
@@ -58,9 +60,14 @@ def setup_logging() -> None:
         if (settings.LOG_LEVEL or "INFO") == "INFO"
         else logging.getLevelName(settings.LOG_LEVEL)
     )
-    # Remove uvicorn default handlers if present
+    # Route uvicorn logs through root JSON handler
     for lg in ("uvicorn", "uvicorn.error", "uvicorn.access"):
-        logging.getLogger(lg).handlers.clear()
+        lgr = logging.getLogger(lg)
+        # Remove their own handlers to avoid duplicate emission
+        lgr.handlers.clear()
+        # Ensure records bubble up to root, which has the JSON handler
+        lgr.propagate = True
+        lgr.setLevel(root.level)
     # stdout handler
     sh = logging.StreamHandler(sys.stdout)
     sh.setFormatter(JsonFormatter())

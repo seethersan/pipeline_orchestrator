@@ -23,6 +23,7 @@ class BlockType(str, Enum):
     LLM_SENTIMENT = "LLM_SENTIMENT"
     LLM_TOXICITY = "LLM_TOXICITY"
     FILE_WRITER = "FILE_WRITER"
+    CSV_WRITER = "CSV_WRITER"
 
 
 class RunStatus(str, Enum):

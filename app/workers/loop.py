@@ -1,12 +1,12 @@
 import os
 import time
 import logging
+from app.core.logging import setup_logging
 from app.infra.db import SessionLocal
 from app.workers.runner import WorkerRunner
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-)
+# Use app-wide JSON logging
+setup_logging()
 logger = logging.getLogger("worker.loop")
 
 

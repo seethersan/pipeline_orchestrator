@@ -27,9 +27,12 @@ class Orchestrator:
             or f"run-{int(datetime.utcnow().timestamp())}",
         )
         self.db.add(run)
-        self.db.commit()
-        self.db.refresh(run)
+        self.db.flush()
+        # only enqueue ROOTS (defensive: use both strategies)
         self.scheduler.schedule_initial(run.id)
+        # Ensure true roots (no inbound edges) are in the queue even if graph helpers differ
+        self.scheduler.enqueue_roots(pipeline_id=pipeline_id, run_id=run.id)
+        self.db.commit()
         return run
 
     def mark_run_finished(self, run_id: int, success: bool) -> models.PipelineRun:

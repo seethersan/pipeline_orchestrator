@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Body, Query
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, computed_field
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
@@ -32,11 +32,16 @@ class FileWriterCfg(BaseModel):
     output_path: str = Field(...)
 
 
+class CsvWriterCfg(BaseModel):
+    output_path: str = Field(...)
+
+
 BLOCK_CFG_MODELS = {
     "CSV_READER": CsvReaderCfg,
     "LLM_SENTIMENT": LlmSentimentCfg,
     "LLM_TOXICITY": LlmToxicityCfg,
     "FILE_WRITER": FileWriterCfg,
+    "CSV_WRITER": CsvWriterCfg,
 }
 
 
@@ -68,6 +73,10 @@ class PipelineImportOut(BaseModel):
     created_edges: int
     replaced: bool = False
     version: int
+
+    @computed_field(alias="id", return_type=int)
+    def id_value(self) -> int:
+        return self.pipeline_id
 
 
 def _validate_spec(spec: PipelineImportIn) -> List[str]:

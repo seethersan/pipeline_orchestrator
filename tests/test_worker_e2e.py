@@ -2,6 +2,8 @@ from pathlib import Path
 import csv
 from sqlalchemy.orm import Session
 from sqlalchemy import select
+from fastapi.testclient import TestClient
+from app.main import app
 from app.infra.db import Base, engine, SessionLocal
 from app import models
 from app.core.orchestrator import Orchestrator
@@ -101,5 +103,157 @@ def test_worker_end_to_end(tmp_path):
         assert models.ArtifactKind.CSV_ROWS in kinds
         assert models.ArtifactKind.SENTIMENT_CSV in kinds
         assert models.ArtifactKind.TOXICITY_CSV in kinds
+    finally:
+        db.close()
+
+
+def test_e2e_happy_path(tmp_path):
+    # Prepare input and output files in a temp dir
+    csv = tmp_path / "input.csv"
+    csv.write_text(
+        'id,text\n'
+        '1,good product and great support\n'
+        '2,"bad service, terrible delays"\n',
+        encoding="utf-8",
+    )
+    out_sent = tmp_path / "sentiment_output.csv"
+    out_tox = tmp_path / "toxicity_output.csv"
+
+    # Build the required sample DAG with explicit writer outputs to tmp_path
+    spec = {
+        "name": "e2e-required-sample",
+        "replace_if_exists": True,
+        "blocks": [
+            {"name": "csv", "type": "CSV_READER", "config": {"input_path": str(csv)}},
+            {"name": "sent", "type": "LLM_SENTIMENT"},
+            {"name": "tox", "type": "LLM_TOXICITY"},
+            {
+                "name": "w_sent",
+                "type": "CSV_WRITER",
+                "config": {"output_path": str(out_sent)},
+            },
+            {
+                "name": "w_tox",
+                "type": "CSV_WRITER",
+                "config": {"output_path": str(out_tox)},
+            },
+        ],
+        "edges": [
+            {"from": "csv", "to": "sent"},
+            {"from": "csv", "to": "tox"},
+            {"from": "sent", "to": "w_sent"},
+            {"from": "tox", "to": "w_tox"},
+        ],
+    }
+
+    client = TestClient(app)
+
+    # Import pipeline
+    r = client.post("/pipelines/import", json=spec)
+    assert r.status_code == 200, r.text
+    pid = (r.json().get("pipeline") or {}).get("id") or r.json().get("id")
+    assert pid, "Pipeline id missing"
+
+    # Start a run
+    r2 = client.post(f"/pipelines/{pid}/run")
+    assert r2.status_code == 200, r2.text
+    run_id = (r2.json().get("run") or {}).get("id") or r2.json().get("id")
+    assert run_id, "Run id missing"
+
+    # Drive the run with a worker until no more work
+    db = SessionLocal()
+    try:
+        w = WorkerRunner(db, worker_id="e2e-worker")
+        # Same pattern as your unit tests: run until queue drains
+        while w.process_next():
+            pass
+
+        # Check outputs exist and have expected columns
+        assert out_sent.exists(), "sentiment_output.csv was not created"
+        assert out_tox.exists(), "toxicity_output.csv was not created"
+
+        sent_head = out_sent.read_text(encoding="utf-8").splitlines()[0]
+        tox_head = out_tox.read_text(encoding="utf-8").splitlines()[0]
+        assert (
+            "sentiment" in sent_head.lower()
+        ), f"Missing 'sentiment' column in: {sent_head}"
+        assert (
+            "toxicity" in tox_head.lower()
+        ), f"Missing 'toxicity' column in: {tox_head}"
+
+        # Optional: verify API progress summary shows success
+        p = client.get(f"/runs/{run_id}/progress")
+        if p.status_code == 200:
+            summary = p.json()
+            assert summary.get("succeeded", 0) >= 1
+    finally:
+        db.close()
+
+
+def test_e2e_llm_failure(monkeypatch, tmp_path):
+    # Force LLM to fail for this test
+    from app.llm import langchain_client
+
+    def boom(prompt: str, system: str | None = None) -> str:
+        raise RuntimeError("LLM down for test")
+
+    monkeypatch.setattr(langchain_client, "llm_predict", boom)
+
+    # Minimal CSV and a pipeline that depends on the LLM
+    csv = tmp_path / "input.csv"
+    csv.write_text("id,text\n1,hello\n", encoding="utf-8")
+    out_sent = tmp_path / "sentiment_output.csv"
+
+    spec = {
+        "name": "e2e-llm-failure",
+        "replace_if_exists": True,
+        "blocks": [
+            {"name": "csv", "type": "CSV_READER", "config": {"input_path": str(csv)}},
+            {"name": "sent", "type": "LLM_SENTIMENT"},
+            {
+                "name": "w",
+                "type": "CSV_WRITER",
+                "config": {"output_path": str(out_sent)},
+            },
+        ],
+        "edges": [{"from": "csv", "to": "sent"}, {"from": "sent", "to": "w"}],
+    }
+
+    client = TestClient(app)
+
+    # Import pipeline
+    r = client.post("/pipelines/import", json=spec)
+    assert r.status_code == 200, r.text
+    pid = (r.json().get("pipeline") or {}).get("id") or r.json().get("id")
+    assert pid, "Pipeline id missing"
+
+    # Start a run
+    r2 = client.post(f"/pipelines/{pid}/run")
+    assert r2.status_code == 200, r2.text
+    run_id = (r2.json().get("run") or {}).get("id") or r2.json().get("id")
+    assert run_id, "Run id missing"
+
+    # Drive with a worker until no more work (the LLM step should raise)
+    db = SessionLocal()
+    try:
+        w = WorkerRunner(db, worker_id="e2e-worker-fail")
+        # A few iterations are enough; process_next will stop once failed
+        for _ in range(10):
+            if not w.process_next():
+                break
+
+        # The writer should not have been produced
+        assert not out_sent.exists(), "Writer ran despite upstream LLM failure"
+
+        # Verify failure via DB instead of the progress endpoint (more robust)
+        failed = (
+            db.query(models.BlockRun)
+            .filter(
+                models.BlockRun.pipeline_run_id == run_id,
+                models.BlockRun.status == models.RunStatus.FAILED,
+            )
+            .count()
+        )
+        assert failed >= 1
     finally:
         db.close()

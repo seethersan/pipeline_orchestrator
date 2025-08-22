@@ -1,5 +1,7 @@
 from __future__ import annotations
 from typing import Optional, Dict, Any
+from pathlib import Path
+from urllib.parse import urlparse, unquote
 from fastapi import (
     APIRouter,
     Depends,
@@ -96,10 +98,16 @@ def download_artifact(
     if settings.SIGNED_URLS_REQUIRED:
         if not (exp and sig and verify_signature(artifact_id, int(exp), sig)):
             raise HTTPException(status_code=401, detail="Invalid or expired signature")
-    # Only support local:// scheme in this step
-    if not art.uri.startswith("local://"):
-        raise HTTPException(status_code=400, detail="Unsupported URI scheme")
-    path = open_local_uri(art.uri)
+    # Support local:// scheme, file:// URIs, and plain filesystem paths
+    uri = art.uri or ""
+    if uri.startswith("local://"):
+        path = open_local_uri(uri)
+    elif uri.startswith("file://"):
+        parsed = urlparse(uri)
+        path = Path(unquote(parsed.path)).expanduser()
+    else:
+        # Treat as a direct filesystem path (absolute or relative)
+        path = Path(uri).expanduser()
     if not path.exists():
         raise HTTPException(status_code=404, detail="File missing")
     data = path.read_bytes()

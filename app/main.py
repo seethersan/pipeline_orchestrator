@@ -34,14 +34,13 @@ from app.api.routes import router as api_router
 app.include_router(api_router)
 
 for mod in [
-    "app.api.logs_routes",
+    "app.api.logs_stream",
     "app.api.artifacts_routes",
     "app.api.graph_routes",
     "app.api.ops_routes",
     "app.api.import_routes",
     "app.api.export_routes",
     "app.api.timeline_routes",
-    "app.api.logs_stream",
     "app.api.admin_routes",
     "app.api.list_routes",
     "app.api.storage_routes",

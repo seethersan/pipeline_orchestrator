@@ -5,8 +5,8 @@
     {"name": "csv",   "type": "CSV_READER",    "config": {"input_path": "/app/data/sample_messages.csv"}},
     {"name": "sent",  "type": "LLM_SENTIMENT"},
     {"name": "tox",   "type": "LLM_TOXICITY"},
-    {"name": "w_sent","type": "CSV_WRITER",    "config": {"output_path": "/app/data/sample_sentiment.csv"}},
-    {"name": "w_tox", "type": "CSV_WRITER",    "config": {"output_path": "/app/data/sample_toxicity.csv"}}
+    {"name": "w_sent","type": "CSV_WRITER",    "config": {"output_path": "/app/data/artifacts/sample_sentiment.csv"}},
+    {"name": "w_tox", "type": "CSV_WRITER",    "config": {"output_path": "/app/data/artifacts/sample_toxicity.csv"}}
   ],
   "edges": [
     {"from": "csv", "to": "sent"},

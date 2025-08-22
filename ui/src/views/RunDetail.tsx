@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiGet, Artifact, BlockEvent } from '../api';
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://localhost:8000';
 
 export default function RunDetail({ runId, goBack }: { runId:number, goBack: ()=>void }){
   const [timeline, setTimeline] = useState<BlockEvent[]>([]);
@@ -13,10 +14,13 @@ export default function RunDetail({ runId, goBack }: { runId:number, goBack: ()=
 
   async function download(id:number){
     try{
-      const s = await apiGet<{url:string}>(`/artifacts/${id}/sign`);
-      window.open(s.url, '_blank');
+  const s = await apiGet<{url:string}>(`/artifacts/${id}/sign`);
+  // Ensure absolute URL targeting the API host
+  const url = new URL(s.url, API_BASE).toString();
+  window.open(url, '_blank');
     }catch{
-      window.open(`/artifacts/${id}/download`, '_blank');
+  const fallback = new URL(`/artifacts/${id}/download`, API_BASE).toString();
+  window.open(fallback, '_blank');
     }
   }
 

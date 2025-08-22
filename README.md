@@ -113,12 +113,13 @@ cp .env.example .env
 
 - APP_NAME: App title (default: pipeline-orchestrator)
 - SQLITE_PATH: DB path (default: ./data/db.sqlite3)
+  - During tests (pytest), a separate SQLite file is used automatically by the app: the name is derived by inserting `.test` before the extension (e.g., `db.sqlite3` -> `db.test.sqlite3`). This keeps test data isolated from development data.
 - API_KEY: Optional API key (sent via X-API-Key) (default: empty)
 - RATE_LIMIT_PER_MINUTE: Limit per IP/path (default: 120)
 - RATE_LIMIT_WINDOW_SECONDS: Sliding window seconds (default: 2)
 - RATE_LIMIT_PATHS: Paths subject to rate limit (default: ["/health"])
 - ARTIFACTS_DIR: Artifacts folder (default: ./data/artifacts)
-- SECRET_KEY: Secret for signed URLs (default: please-change-me)
+- SECRET_KEY: Secret for signed URLs (default: dev-secret)
 - SIGNED_URL_TTL_SECONDS: Signed URL lifetime (default: 300)
 - SIGNED_URLS_REQUIRED: Require signed URLs (default: false)
 - CORS_ALLOW_ORIGINS: Allowed UI origins (default: ["http://localhost:5173","http://localhost:8080"])
@@ -196,6 +197,7 @@ Runs:
 Artifacts:
 - GET /artifacts/{artifact_id}/sign — create a temporary signed URL
 - GET /artifacts/{artifact_id}/download — direct download (if signing not required)
+  - Supported artifact URI schemes: `local://...` (stored under ARTIFACTS_DIR), `file://...`, and plain filesystem paths (absolute or relative). Set `SIGNED_URLS_REQUIRED=true` to enforce signed downloads.
 
 Ops:
 - GET /queue/size?run_id= — pending blocks for a run
@@ -289,6 +291,7 @@ pytest -q
 Notes:
 - Keep LLM_PROVIDER=mock for deterministic tests without network calls
 - Some tests temporarily lower rate limits (e.g., RATE_LIMIT_PER_MINUTE=3)
+ - Tests write to a separate SQLite file (see `SQLITE_PATH` note above). You can delete the `*.test.sqlite3` file to reset test state.
 
 ## Troubleshooting
 

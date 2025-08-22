@@ -45,6 +45,7 @@ for mod in [
     "app.api.list_routes",
     "app.api.storage_routes",
     "app.api.stream_routes",
+    "app.api.dataset_routes",
 ]:
     try:
         m = __import__(mod, fromlist=["router"])

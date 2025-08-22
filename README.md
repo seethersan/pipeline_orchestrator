@@ -163,6 +163,10 @@ Services: api (Uvicorn/FastAPI), worker (long-running app.workers.loop), ui (Ngi
 
 Shared volume ./data:/app/data for DB and artifacts.
 
+SQLite DBs:
+- Normal runtime uses the file at `SQLITE_PATH` (default `./data/db.sqlite3`).
+- Test runs (pytest) automatically use a sibling file `db.test.sqlite3` to keep isolation.
+
 ## React UI (Vite + TypeScript)
 
 Open:
@@ -198,6 +202,11 @@ Artifacts:
 - GET /artifacts/{artifact_id}/sign — create a temporary signed URL
 - GET /artifacts/{artifact_id}/download — direct download (if signing not required)
   - Supported artifact URI schemes: `local://...` (stored under ARTIFACTS_DIR), `file://...`, and plain filesystem paths (absolute or relative). Set `SIGNED_URLS_REQUIRED=true` to enforce signed downloads.
+  
+Datasets:
+- POST /datasets/synthesize?count=40&output_path=/app/data/sample_messages.csv — generate a CSV dataset with 10 positive, 10 negative, 10 neutral, and 10 toxic-style messages repeated/cycled to match `count`.
+  - Response: `{ "count": N, "path": "/app/data/...csv" }`.
+  - Default output if not provided: `/app/data/sample_messages.csv`.
 
 Ops:
 - GET /queue/size?run_id= — pending blocks for a run
@@ -243,9 +252,13 @@ edges:
 Minimal CSV example for /app/data/input.csv:
 ```csv
 id,text
-1,good
-2,bad
+1,good product and great support
+2,"bad service, terrible delays"
 ```
+
+Dataset synthesis requirement (for evaluation):
+- Before starting pipeline execution in demos, generate 30–50 short text records. You may use the endpoint above or any LLM to create a CSV with columns `id,text`.
+- Example prompt: "Generate 40 short social media-style messages, each 5–15 words long, covering a variety of sentiments and toxicity levels. Include positive, negative, neutral, and toxic examples. Return the data as a CSV with columns: id, text."
 
 ## LLM integration (mock | Gemini via LangChain)
 

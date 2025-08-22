@@ -48,7 +48,6 @@ export default function App(){
         </div>
       </div>
       {view}
-      <div className="footer">Modern UI • React + Vite • Full Flow</div>
     </>
   );
 }
